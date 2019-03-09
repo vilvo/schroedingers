@@ -7,6 +7,9 @@
 #include <opencv2/core/types_c.h>       // cvScalar
 #include <string>
 
+// protocol buffer message
+#include "image.pb.h"
+
 const std::string DEBUG_WINDOW_NAME("debug window");
 
 cv::Mat overlay_text(const std::string text, const cv::Mat& image) {
@@ -33,8 +36,19 @@ rs2::config get_pipeline_config() {
   return cfg;
 }
 
+//
+bool encode_jpeg(const cv::Mat input, std::vector<uchar> & output) {
+  const std::string JPEG(".jpeg");
+  std::vector<int> param(2);
+  param[0] = cv::IMWRITE_JPEG_QUALITY;
+  param[1] = 70; // jpeg quality between 0-100
+  return cv::imencode(JPEG, input, output, param);
+}
+
 int main(int argc, char * argv[]) try
 {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+
   rs2::pipeline pipe;
   pipe.start(get_pipeline_config());
 
@@ -53,14 +67,32 @@ int main(int argc, char * argv[]) try
 		  (void*)colorframe.get_data(),
 		  cv::Mat::AUTO_STEP);
 
-    // enable local visual debug with overlayed framecount
-    if (debug) {
+    if(debug) {
       visualdebug(image, framecount);
     }
+
+    //TODO: resize mat, normalize for NN input layer?
+
+    std::vector<uchar> jpeg;
+    // encode to jpeg
+    if (!encode_jpeg(image, jpeg)) {
+      std::cerr << "encoding to jpeg failed" << std::endl;
+      continue;
+    }
+
+    // map jpeg to protobuf image
+    schroedingers::image pb_image;
+    pb_image.set_width(colorframe.get_width());
+    pb_image.set_height(colorframe.get_height());
+    pb_image.set_data(std::string(jpeg.begin(), jpeg.end()));
+
+    // TODO: serialize/stream to py
+
   }
 
   return EXIT_SUCCESS;
  } // main
+ // boilerplate exception handling from realsense examples
  catch (const rs2::error & e) {
      std::cerr << "realsense error calling "
 	       << e.get_failed_function()
