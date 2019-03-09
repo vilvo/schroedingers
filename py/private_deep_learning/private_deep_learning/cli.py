@@ -10,7 +10,10 @@ import torch
 import torch.nn.functional
 import syft
 import torchvision
+import numpy
 
+# local modules
+from mjpegc import mjpegc
 
 class Net(torch.nn.Module):
     def __init__(self):
@@ -95,6 +98,69 @@ def test(model, device, test_loader):
         100. * correct / len(test_loader.dataset)))
 
 
+def do_predict(model_filename) -> int:
+
+    #TODO: refactor and resolve an issue with feeding jpegs to neural net
+
+    """
+    from PIL import Image
+    image = Image.open("kissa.jpg")
+    image = numpy.array(image)  # convert image to numpy array
+    t = torch.from_numpy(image)
+    t = t.unsqueeze(0)
+    model.forward(t)
+    k = model(t)
+    result = os.EX_OK
+    """
+    return os.EX_OK
+
+
+def do_generate(count, batch_size, test_batch_size, device, epochs, log_interval, model_filename) -> int:
+    """
+    generates and saves a neural network model with federated workers
+    parameters can be used to guide training
+    :param count: number of federated workers
+    :param batch_size: size of batch to a federated worker
+    :param test_batch_size: test batch size
+    :param device: cpu (tested) or cuda (not tested)
+    :param epochs: neural network training epochs
+    :param log_interval: interval to print training progress and accuracy
+    :param model_filename: filename to save the trained model to
+    :return: os.EX_OK on success
+    """
+    hook = syft.TorchHook(torch)
+    workers = get_workers(count, hook)
+    fdl = get_federated_train_loader(workers, batch_size)
+    test_loader = get_test_loader(test_batch_size)
+    model = Net().to(device)
+
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+    for epoch in range(1, epochs + 1):
+        train(model, device, fdl, optimizer, epoch, log_interval, batch_size)
+        test(model, device, test_loader)
+
+    torch.save(model.state_dict(), model_filename)
+    return os.EX_OK
+
+
+def read_stream(url):
+    """
+    read MJPEG stream from url
+    :param url: http url to the server stream
+    :return: yields frames to generator
+    """
+
+    # TODO: remove visual cv2 debug, yield frame to feed to neural net instead
+    import cv2
+
+    for jpg in mjpegc.client(url):
+        i = cv2.imdecode(numpy.fromstring(jpg, dtype=numpy.uint8), cv2.IMREAD_COLOR)
+        cv2.imshow('mjpeg stream', i)
+        if cv2.waitKey(1) == 27: # esc-key
+            break
+    return os.EX_OK
+
 @click.command()
 @click.option('--count', default=2, help='Number of workers')
 @click.option('--batch_size', default=64, help='Batch size to share to federated workers')
@@ -103,27 +169,21 @@ def test(model, device, test_loader):
 @click.option('--log_interval', default=200)
 @click.option('--epochs', default=20)
 @click.option('--model_filename', default="federated_trained_cifar10_model.pt")
+@click.option('--predict/-no-predict', default=False)
+@click.option('--generate/--no-generate', default=False)
+@click.option('--stream/--no_stream', default=True)
+@click.option('--stream_url', default="http://localhost:5000", help='url to HTTP MJPEG stream')
 def main(count, batch_size,  test_batch_size, device,
-         log_interval, epochs, model_filename) -> int:
+         log_interval, epochs, model_filename, predict, generate, stream, stream_url) -> int:
 
-    result = os.EX_CANTCREAT
+    result = os.EX_UNAVAILABLE
 
     try:
-        hook = syft.TorchHook(torch)
-        workers = get_workers(count, hook)
-        fdl = get_federated_train_loader(workers, batch_size)
-        test_loader = get_test_loader(test_batch_size)
-        model = Net().to(device)
-
-        optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-
-        for epoch in range(1, epochs+1):
-            train(model, device, fdl, optimizer, epoch, log_interval, batch_size)
-            test(model, device, test_loader)
-
-        torch.save(model.state_dict(), model_filename)
-        result = os.EX_OK
+        if stream: result = read_stream(stream_url)
+        if predict: result = do_predict(model_filename)
+        if generate: result = do_generate(count, batch_size, test_batch_size, device, epochs, log_interval, model_filename)
     except:
+        print("Unexpected error:", sys.exc_info())
         result = os.EX_SOFTWARE
 
     return result
