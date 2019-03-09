@@ -7,10 +7,12 @@
 #include <opencv2/core/types_c.h>       // cvScalar
 #include <string>
 
-// protocol buffer message
-#include "image.pb.h"
+#include "MJPEGWriter/MJPEGWriter.h"
 
 const std::string DEBUG_WINDOW_NAME("debug window");
+const unsigned short int STREAMERPORT = 5000;
+
+const unsigned int WIDTH = 640, HEIGHT = 480;
 
 cv::Mat overlay_text(const std::string text, const cv::Mat& image) {
   cv::Mat overlayed(image);
@@ -32,11 +34,10 @@ rs2::config get_pipeline_config() {
   rs2::config cfg;
   // set colors to support conversion to cv::Mat with CV_8UC3
   // resize to the smallest supported by camera
-  cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 30);
+  cfg.enable_stream(RS2_STREAM_COLOR, WIDTH, HEIGHT, RS2_FORMAT_BGR8, 30);
   return cfg;
 }
 
-//
 bool encode_jpeg(const cv::Mat input, std::vector<uchar> & output) {
   const std::string JPEG(".jpeg");
   std::vector<int> param(2);
@@ -47,12 +48,17 @@ bool encode_jpeg(const cv::Mat input, std::vector<uchar> & output) {
 
 int main(int argc, char * argv[]) try
 {
-  GOOGLE_PROTOBUF_VERIFY_VERSION;
-
   rs2::pipeline pipe;
   pipe.start(get_pipeline_config());
 
-  auto debug = 1, framecount = 0;
+  auto debug = 0, framecount = 0;
+
+  MJPEGWriter streamer(STREAMERPORT);
+  // MJPEGWriter expects a frame written to start
+  cv::Mat blackframe(WIDTH, HEIGHT, CV_8UC3, Scalar(0,0,0));
+  streamer.write(blackframe);
+
+  streamer.start();
 
   while (1) {
     // wait pipeline to have new data available
@@ -67,29 +73,15 @@ int main(int argc, char * argv[]) try
 		  (void*)colorframe.get_data(),
 		  cv::Mat::AUTO_STEP);
 
+    // support local debug without browser
     if(debug) {
       visualdebug(image, framecount);
     }
 
-    //TODO: resize mat, normalize for NN input layer?
-
-    std::vector<uchar> jpeg;
-    // encode to jpeg
-    if (!encode_jpeg(image, jpeg)) {
-      std::cerr << "encoding to jpeg failed" << std::endl;
-      continue;
-    }
-
-    // map jpeg to protobuf image
-    schroedingers::image pb_image;
-    pb_image.set_width(colorframe.get_width());
-    pb_image.set_height(colorframe.get_height());
-    pb_image.set_data(std::string(jpeg.begin(), jpeg.end()));
-
-    // TODO: serialize/stream to py
-
+    streamer.write(image);
   }
 
+  streamer.stop();
   return EXIT_SUCCESS;
  } // main
  // boilerplate exception handling from realsense examples

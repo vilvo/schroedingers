@@ -6,7 +6,7 @@
 
 * librealsense to read framesets from a RealSense camera.
 * Frameset filtering, and simple color frame processing with opencv.
-* Streaming processed frames to neural network process (py) with protocol buffers.
+* Streaming processed frames to neural network process (py) with mjpeg over http
 
 ### Dependencies and build instructions
 
@@ -20,8 +20,6 @@ sudo add-apt-repository "deb http://realsense-hw-public.s3.amazonaws.com/Debian/
 sudo apt install librealsense2-dkms librealsense2-utils librealsense2-dev
 # opencv - TODO: fix excess wildcard, not all libs used
 sudo apt install libopencv*
-# protocol buffers
-sudo apt install protobuf-compiler libprotoc-dev
 ```
 
 #### Build
