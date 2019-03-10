@@ -117,6 +117,18 @@ def do_predict(model_filename, url) -> int:
                                                          torchvision.transforms.ToTensor(),
                                                          torchvision.transforms.Normalize((0.5, 0.5, 0.5),
                                                                                           (0.5, 0.5, 0.5))])
+    import cv2
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    bottomLeftCornerOfText = (10, 100)
+    fontScale = 1
+    fontColor = (255, 255, 255)
+    lineType = 2
+
+    last_prediction = -1
+    consecutive_match, consecutive_mismatch = 0, 0
+    threshold = 3
+    overlay_text = ""
+
     for jpg in mjpegc.client(url):
         # process jpeg through PIL and above transform pipeline
         # unsqueeze converts our tensor (n channels, height, width) to
@@ -139,8 +151,35 @@ def do_predict(model_filename, url) -> int:
         # but still a lot of false positives at 30 frames and predictions per second
         # TODO: filter single predictions from consecutive to reduce noise
         """
-        if model_labels[prediction.data.numpy().argmax()] == 'cat':
-            print("the cat is alive")
+
+        current_prediction = prediction.data.numpy().argmax()
+
+        i = cv2.imdecode(numpy.fromstring(jpg, dtype=numpy.uint8), cv2.IMREAD_COLOR)
+
+        if current_prediction == last_prediction:
+            consecutive_match += 1
+            consecutive_mismatch = 0
+        else:
+            consecutive_mismatch += 1
+            consecutive_match = 0
+
+        if consecutive_match >= threshold:
+            overlay_text = "the cat is alive"
+        elif consecutive_mismatch >= threshold:
+            overlay_text = ""
+
+        cv2.putText(i, overlay_text,
+                    bottomLeftCornerOfText,
+                    font,
+                    fontScale,
+                    fontColor,
+                    lineType)
+
+        last_prediction = current_prediction
+
+        cv2.imshow('schroedingers', i)
+        if cv2.waitKey(1) == 27:  # esc-key
+            break
 
     return os.EX_OK
 
