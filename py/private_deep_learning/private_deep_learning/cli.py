@@ -17,29 +17,10 @@ import io
 
 # local modules
 from mjpegc import mjpegc
+from nnet import nnet
 
 # CIFAR labels
 model_labels = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
-
-
-class Net(torch.nn.Module):
-    def __init__(self):
-        super(Net, self).__init__()
-        self.conv1 = torch.nn.Conv2d(3, 6, 5)
-        self.pool = torch.nn.MaxPool2d(2, 2)
-        self.conv2 = torch.nn.Conv2d(6, 16, 5)
-        self.fc1 = torch.nn.Linear(16 * 5 * 5, 120)
-        self.fc2 = torch.nn.Linear(120, 84)
-        self.fc3 = torch.nn.Linear(84, 10)
-
-    def forward(self, x):
-        x = self.pool(torch.nn.functional.relu(self.conv1(x)))
-        x = self.pool(torch.nn.functional.relu(self.conv2(x)))
-        x = x.view(-1, 16 * 5 * 5)
-        x = torch.nn.functional.relu(self.fc1(x))
-        x = torch.nn.functional.relu(self.fc2(x))
-        x = self.fc3(x)
-        return torch.nn.functional.log_softmax(x, dim=1)
 
 
 def get_workers(count, hook) -> tuple:
@@ -107,7 +88,7 @@ def test(model, device, test_loader):
 
 def do_predict(model_filename, url) -> int:
 
-    model = Net()
+    model = nnet.Net()
     model.load_state_dict(torch.load(model_filename))
 
     # transform pipeline for our 640x480 mjpeg stream input jpeg images with random crop to square,
@@ -201,7 +182,7 @@ def do_generate(count, batch_size, test_batch_size, device, epochs, log_interval
     workers = get_workers(count, hook)
     fdl = get_federated_train_loader(workers, batch_size)
     test_loader = get_test_loader(test_batch_size)
-    model = Net().to(device)
+    model = nnet.Net().to(device)
 
     optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 
